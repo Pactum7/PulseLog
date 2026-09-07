@@ -5,6 +5,9 @@ PulseLog 是面向 Elasticsearch 8 服务日志场景的轻量级 Discover 工�
 ## 已实现功能
 
 - Discover 风格日志列表、字段栏、文档详情抽屉与日志量时间直方图
+- 深色/浅色主题切换并记忆用户选择
+- 在日志趋势图上拖动选择精确时间区间并自动重新查询
+- 日志 message 支持行内单条展开、全部展开和全部收起，完整 `_source` 仍可从展开区查看
 - 最近 15/30 分钟、1/4/12/24 小时、3/7/30 天快捷时间范围
 - 简化查询语言：等值、文本分词、短语、`AND`、`OR`、括号和隐式 `AND`
 - 感知 ES 映射：`text` 使用 `match` / `match_phrase`，`keyword` 使用 `term`，`wildcard` 使用 `wildcard`
