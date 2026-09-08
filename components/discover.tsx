@@ -27,7 +27,48 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function getPath(source: Record<string, unknown>, path: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(source, path)) return source[path];
   return path.split(".").reduce<unknown>((value, key) => value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined, source);
+}
+
+function getHitValue(hit: LogHit, path: string): unknown {
+  if (path === "_id") return hit.id;
+  if (path === "_index") return hit.index;
+  return getPath(hit.source, path);
+}
+
+function queryValue(value: string | number | boolean): string {
+  if (typeof value !== "string") return String(value);
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+type FieldValueStat = { key: string; value: string | number | boolean; label: string; count: number; percent: number };
+type FieldStats = { values: FieldValueStat[]; present: number; distinct: number; highCardinality: boolean };
+
+function fieldStats(hits: LogHit[], field: string): FieldStats {
+  const counts = new Map<string, Omit<FieldValueStat, "percent">>();
+  let present = 0;
+  for (const hit of hits) {
+    const raw = getHitValue(hit, field);
+    const values = (Array.isArray(raw) ? raw : [raw]).filter((value): value is string | number | boolean =>
+      typeof value === "string" || typeof value === "number" || typeof value === "boolean");
+    const unique = new Set<string>();
+    for (const value of values) {
+      const key = `${typeof value}:${String(value)}`;
+      if (unique.has(key)) continue;
+      unique.add(key);
+      const current = counts.get(key);
+      if (current) current.count++;
+      else counts.set(key, { key, value, label: String(value), count: 1 });
+    }
+    if (unique.size) present++;
+  }
+  const highCardinality = counts.size > 20 && counts.size >= Math.max(20, present * 0.5);
+  const candidates = [...counts.values()];
+  const shown = highCardinality
+    ? candidates.slice(0, 5)
+    : candidates.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 10);
+  return { present, distinct: counts.size, highCardinality, values: shown.map((item) => ({ ...item, percent: hits.length ? item.count / hits.length * 100 : 0 })) };
 }
 
 export function Discover() {
@@ -40,6 +81,7 @@ export function Discover() {
   const [absoluteRange, setAbsoluteRange] = useState<AbsoluteRange | null>(null);
   const [rangeOpen, setRangeOpen] = useState(false);
   const [fieldFilter, setFieldFilter] = useState("");
+  const [expandedField, setExpandedField] = useState<string | null>(null);
   const [columns, setColumns] = useState<string[]>([]);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -72,19 +114,19 @@ export function Discover() {
   useEffect(() => { loadEnvironments().catch((e) => setError(e.message)); }, [loadEnvironments]);
   useEffect(() => {
     if (!environmentId) return;
-    setResult(null); setFields([]); setColumns([]);
+    setResult(null); setFields([]); setColumns([]); setExpandedField(null);
     json<FieldInfo[]>(`/api/fields?environmentId=${encodeURIComponent(environmentId)}`)
       .then(setFields).catch((e) => setError(e.message));
   }, [environmentId]);
 
-  const runSearch = useCallback(async (append = false, selected?: AbsoluteRange) => {
+  const runSearch = useCallback(async (append = false, selected?: AbsoluteRange, queryOverride?: string) => {
     if (!environmentId) return;
     setLoading(true); setError("");
     try {
       const fixed = selected || absoluteRange;
       const to = fixed?.to || new Date(); const from = fixed?.from || new Date(to.getTime() - range.ms);
       const data = await json<SearchResult>("/api/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-        environmentId, query, from: from.toISOString(), to: to.toISOString(), size: 100,
+        environmentId, query: queryOverride ?? query, from: from.toISOString(), to: to.toISOString(), size: 500,
         pitId: append ? result?.pitId : undefined, searchAfter: append ? result?.nextCursor : undefined,
       }) });
       if (!append) setExpandedRows(new Set());
@@ -97,6 +139,12 @@ export function Discover() {
 
   function submit(event: FormEvent) { event.preventDefault(); runSearch(); }
   function toggleColumn(name: string) { setColumns((list) => list.includes(name) ? list.filter((item) => item !== name) : [...list, name]); }
+  function applyClause(clause: string) {
+    const nextQuery = query.trim() ? `(${query.trim()}) AND ${clause}` : clause;
+    setQuery(nextQuery);
+    runSearch(false, undefined, nextQuery);
+  }
+  function applyFilter(field: string, value: string | number | boolean) { applyClause(`${field}:${queryValue(value)}`); }
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next); document.documentElement.dataset.theme = next; localStorage.setItem("pulselog-theme", next);
@@ -142,14 +190,14 @@ export function Discover() {
           <div className="range-wrap"><button type="button" className="range-button" onClick={() => setRangeOpen(!rangeOpen)}><Clock3 size={16}/><span>{rangeLabel}</span><ChevronDown size={14}/></button>{rangeOpen && <div className="range-popover"><p>快速时间范围</p>{RANGES.map((item) => <button type="button" key={item.label} className={!absoluteRange && item.label === range.label ? "active" : ""} onClick={() => { const to = new Date(); const selected = { from: new Date(to.getTime() - item.ms), to }; setRange(item); setAbsoluteRange(null); setRangeOpen(false); runSearch(false, selected); }}>{item.label}<span>{!absoluteRange && item.label === range.label ? "✓" : ""}</span></button>)}</div>}</div>
           <button className="primary search-button" disabled={loading}>{loading ? <LoaderCircle size={17} className="spin"/> : <Search size={17}/>}查询</button>
         </form>
-        <div className="query-hints"><span>支持</span><code>field:value</code><code>text:&quot;短语&quot;</code><code>wildcard:*包含*</code><code>AND / OR</code></div>
+        <div className="query-hints"><span>支持</span><code>field:value</code><code>field:EXISTS</code><code>text:&quot;短语&quot;</code><code>wildcard:*包含*</code><code>AND / OR</code></div>
       </section>
       {error && <div className="error-banner"><AlertCircle size={17}/><span>{error}</span><button onClick={() => setError("")}><X size={15}/></button></div>}
       <div className="content-grid">
         <aside className="fields-panel">
           <div className="panel-title"><div><span>可用字段</span><strong>{fields.length}</strong></div><Filter size={15}/></div>
           <div className="field-search"><Search size={14}/><input value={fieldFilter} onChange={(e) => setFieldFilter(e.target.value)} placeholder="筛选字段"/></div>
-          <div className="field-list">{filteredFields.map((field) => <button key={field.name} onClick={() => toggleColumn(field.name)} className={columns.includes(field.name) ? "selected" : ""}><span className={`type-badge type-${field.types[0]}`}>{field.types[0] === "text" ? "T" : field.types[0] === "wildcard" ? "W" : field.types[0] === "date" ? "D" : "#"}</span><span title={field.name}>{field.name}</span><Plus size={13}/></button>)}</div>
+          <div className="field-list">{filteredFields.map((field) => <FieldItem key={field.name} field={field} hits={result?.hits || []} expanded={expandedField === field.name} selected={columns.includes(field.name)} onToggle={() => setExpandedField((current) => current === field.name ? null : field.name)} onToggleColumn={() => toggleColumn(field.name)} onFilter={(value) => applyFilter(field.name, value)} onExists={() => applyClause(`${field.name}:EXISTS`)}/>)}</div>
         </aside>
         <section className="results-panel">
           <div className="result-summary"><div><span className="pulse-dot"/><strong>{result ? result.total.toLocaleString() : "—"}</strong><span>条日志</span>{result && <span className="took">{result.took} ms</span>}</div><div className="result-actions"><button className="ghost" onClick={toggleAllRows} disabled={!result?.hits.length}>{allExpanded ? <ChevronsDownUp size={14}/> : <ChevronsUpDown size={14}/>} {allExpanded ? "全部收起" : "全部展开"}</button><button className="ghost" onClick={() => runSearch()} disabled={loading}><RefreshCw size={14}/>刷新</button></div></div>
@@ -161,6 +209,27 @@ export function Discover() {
     </main>
     {drawerHit && <LogDrawer hit={drawerHit} onClose={() => setDrawerHit(null)}/>}
     {settings && <EnvironmentModal environments={environments} onClose={() => setSettings(false)} onSaved={async () => { await loadEnvironments(); setSettings(false); }}/>}
+  </div>;
+}
+
+function FieldItem({ field, hits, expanded, selected, onToggle, onToggleColumn, onFilter, onExists }: { field: FieldInfo; hits: LogHit[]; expanded: boolean; selected: boolean; onToggle: () => void; onToggleColumn: () => void; onFilter: (value: string | number | boolean) => void; onExists: () => void }) {
+  const stats = useMemo(() => fieldStats(hits, field.name), [hits, field.name]);
+  const type = field.types[0];
+  return <div className={`field-item ${expanded ? "expanded" : ""} ${selected ? "selected" : ""}`}>
+    <div className="field-row">
+      <button className="field-main" onClick={onToggle} title={`查看 ${field.name} 的值分布`} aria-expanded={expanded}><ChevronRight className="field-chevron" size={13}/><span className={`type-badge type-${type}`}>{type === "text" ? "T" : type === "wildcard" ? "W" : type === "date" ? "D" : "#"}</span><span className="field-name" title={field.name}>{field.name}</span></button>
+      <button className="field-column" onClick={onToggleColumn} title={selected ? "从表格移除" : "添加为表格列"} aria-label={selected ? `从表格移除 ${field.name}` : `添加表格列 ${field.name}`}><Plus size={13}/></button>
+    </div>
+    {expanded && <div className="field-values">
+      <div className="field-values-summary"><span>已加载 {hits.length} 条</span><span>{stats.distinct.toLocaleString()} 个值</span></div>
+      {!hits.length && <p className="field-values-empty">查询后可查看值分布</p>}
+      {Boolean(hits.length) && !stats.values.length && <p className="field-values-empty">当前日志中没有可统计值</p>}
+      {stats.highCardinality && <p className="cardinality-note">高基数字段，仅展示 5 个样例值</p>}
+      {stats.values.map((item) => <button className="field-value" key={item.key} onClick={() => onFilter(item.value)} title={`筛选 ${field.name}:${item.label}`}>
+        <span className="field-value-label">{item.label || "(空字符串)"}</span><strong>{item.percent < 0.1 && item.percent > 0 ? "<0.1" : item.percent.toFixed(1)}%</strong><i style={{ width: `${Math.max(item.percent, 1)}%` }}/>
+      </button>)}
+      <button className="exists-filter" onClick={onExists}><Filter size={11}/>仅查看存在该字段的日志 <span>{hits.length ? `${(stats.present / hits.length * 100).toFixed(1)}%` : ""}</span></button>
+    </div>}
   </div>;
 }
 
