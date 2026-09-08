@@ -109,14 +109,21 @@ function scalar(value: string, type: string): string | number | boolean {
 }
 
 function compileTerm(node: Extract<QueryNode, { kind: "term" }>, fields: Map<string, FieldInfo>, defaultField: string): estypes.QueryDslQueryContainer {
+  if (node.field?.toLowerCase() === "_exists_") {
+    const target = node.value;
+    if (!fields.has(target)) throw new QuerySyntaxError(`Unknown or non-searchable field '${target}'`, 0);
+    return { exists: { field: target } };
+  }
   const field = node.field || defaultField;
   const info = fields.get(field);
   if (node.field && !info) throw new QuerySyntaxError(`Unknown or non-searchable field '${field}'`, 0);
   const type = info?.types[0] || "text";
-  const hasWildcard = node.value.includes("*") || node.value.includes("?");
+  if (!node.quoted && (node.value === "*" || node.value.toUpperCase() === "EXISTS")) {
+    return { exists: { field } };
+  }
+  const hasWildcard = !node.quoted && (node.value.includes("*") || node.value.includes("?"));
 
   if (hasWildcard) {
-    if (node.quoted) throw new QuerySyntaxError("Wildcards are not supported inside quoted phrases", 0);
     if (["wildcard", "keyword", "constant_keyword"].includes(type)) {
       return { wildcard: { [field]: { value: node.value, case_insensitive: true } } };
     }

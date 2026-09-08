@@ -13,6 +13,8 @@ PulseLog 是面向 Elasticsearch 8 服务日志场景的轻量级 Discover 工�
 - 感知 ES 映射：`text` 使用 `match` / `match_phrase`，`keyword` 使用 `term`，`wildcard` 使用 `wildcard`
 - `message.pattern:*foo*` 会生成大小写不敏感的 contains wildcard 查询
 - 通过 `_field_caps` 自动加载可搜索字段和字段类型
+- 字段侧栏可展开查看当前已加载 500/1000 条日志中的值分布和占比，高基数字段自动降级为样例展示；点击值可直接追加筛选
+- 字段存在性查询支持 `field:EXISTS`、Kibana 风格 `field:*` 和 Lucene 风格 `_exists_:field`
 - PIT + `search_after` 深度分页，不受 `index.max_result_window=10000` 限制
 - 多环境配置与顶部快捷切换；支持 Basic Auth、API Key、CA 证书
 - ES 密钥仅保存在服务端，MySQL 中使用 AES-256-GCM 加密
@@ -29,6 +31,7 @@ PulseLog 是面向 Elasticsearch 8 服务日志场景的轻量级 Discover 工�
 | `message:timeout` | `text` | `match`，词间为 AND |
 | `message:"connection refused"` | `text` | `match_phrase` |
 | `message.pattern:*foo*` | `wildcard` | `wildcard` + `case_insensitive` |
+| `trace.id:EXISTS` / `trace.id:*` | 任意 | `exists` |
 | `service:api AND level:ERROR` | 任意 | `bool.must` |
 | `level:WARN OR level:ERROR` | 任意 | `bool.should` |
 | `service:api message:timeout` | 任意 | 隐式 `AND` |
