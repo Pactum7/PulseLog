@@ -12,13 +12,22 @@ function auth(env: EnvironmentSecret) {
   return undefined;
 }
 
+export function proxyUrl(env: Pick<EnvironmentSecret, "proxyUrl" | "proxyUsername" | "proxyPassword">): string | undefined {
+  if (!env.proxyUrl) return undefined;
+  const url = new URL(env.proxyUrl);
+  if (env.proxyUsername) url.username = env.proxyUsername;
+  if (env.proxyPassword) url.password = env.proxyPassword;
+  return url.toString();
+}
+
 export function clientFor(env: EnvironmentSecret): Client {
-  const cacheKey = `${env.id}:${env.baseUrl}:${env.username || ""}:${env.hasSecret}`;
+  const cacheKey = `${env.id}:${env.baseUrl}:${env.username || ""}:${env.hasSecret}:${env.proxyUrl || ""}:${env.proxyUsername || ""}:${env.hasProxySecret}`;
   let client = clients.get(cacheKey);
   if (!client) {
     client = new Client({
       node: env.baseUrl,
       auth: auth(env),
+      proxy: proxyUrl(env),
       tls: { rejectUnauthorized: env.tlsVerify, ca: env.caCert },
       requestTimeout: 30_000,
       maxRetries: 2,

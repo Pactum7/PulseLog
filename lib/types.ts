@@ -10,8 +10,11 @@ export interface EnvironmentSummary {
   messageField: string;
   authType: AuthType;
   username?: string;
+  proxyUrl?: string;
+  proxyUsername?: string;
   tlsVerify: boolean;
   hasSecret: boolean;
+  hasProxySecret: boolean;
   source: "database" | "environment";
 }
 
@@ -19,6 +22,7 @@ export interface EnvironmentSecret extends EnvironmentSummary {
   password?: string;
   apiKey?: string;
   caCert?: string;
+  proxyPassword?: string;
 }
 
 export interface FieldInfo {

@@ -12,10 +12,18 @@ export const environmentSchema = z.object({
   password: z.string().max(2048).optional(),
   apiKey: z.string().max(4096).optional(),
   caCert: z.string().max(100_000).optional(),
+  proxyUrl: z.string().url()
+    .refine((v) => v.startsWith("http://") || v.startsWith("https://"), "Proxy must use HTTP or HTTPS")
+    .refine((v) => { const url = new URL(v); return !url.username && !url.password; }, "Enter proxy credentials in the separate username and password fields")
+    .optional(),
+  proxyUsername: z.string().max(255).optional(),
+  proxyPassword: z.string().max(2048).optional(),
   tlsVerify: z.boolean().default(true),
 }).superRefine((v, ctx) => {
   if (v.authType === "basic" && (!v.username || !v.password)) ctx.addIssue({ code: "custom", message: "Basic authentication requires username and password" });
   if (v.authType === "apiKey" && !v.apiKey) ctx.addIssue({ code: "custom", message: "API key authentication requires a key" });
+  if (!v.proxyUrl && (v.proxyUsername || v.proxyPassword)) ctx.addIssue({ code: "custom", message: "Proxy credentials require a proxy URL" });
+  if (v.proxyPassword && !v.proxyUsername) ctx.addIssue({ code: "custom", message: "Proxy password requires a username" });
 });
 
 export const searchSchema = z.object({

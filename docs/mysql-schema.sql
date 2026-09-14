@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS environments (
   password_encrypted TEXT NULL,
   api_key_encrypted TEXT NULL,
   ca_cert_encrypted MEDIUMTEXT NULL,
+  proxy_url VARCHAR(2048) NULL,
+  proxy_username VARCHAR(255) NULL,
+  proxy_password_encrypted TEXT NULL,
   tls_verify BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

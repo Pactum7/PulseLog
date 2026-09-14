@@ -10,6 +10,7 @@ interface EnvRow extends RowDataPacket {
   timestamp_field: string; message_field: string; auth_type: "basic" | "apiKey" | "none";
   username: string | null; password_encrypted: string | null; api_key_encrypted: string | null;
   ca_cert_encrypted: string | null; tls_verify: number;
+  proxy_url: string | null; proxy_username: string | null; proxy_password_encrypted: string | null;
 }
 
 function bootstrap(): EnvironmentSecret | null {
@@ -22,13 +23,16 @@ function bootstrap(): EnvironmentSecret | null {
     messageField: process.env.ES_MESSAGE_FIELD || "message", authType,
     username: process.env.ES_USERNAME, password: process.env.ES_PASSWORD,
     apiKey: process.env.ES_API_KEY, caCert: process.env.ES_CA_CERT?.replaceAll("\\n", "\n"),
-    tlsVerify: process.env.ES_TLS_VERIFY !== "false", hasSecret: authType !== "none", source: "environment",
+    proxyUrl: process.env.ES_PROXY_URL, proxyUsername: process.env.ES_PROXY_USERNAME,
+    proxyPassword: process.env.ES_PROXY_PASSWORD,
+    tlsVerify: process.env.ES_TLS_VERIFY !== "false", hasSecret: authType !== "none",
+    hasProxySecret: Boolean(process.env.ES_PROXY_PASSWORD), source: "environment",
   };
 }
 
 function summary(env: EnvironmentSecret): EnvironmentSummary {
-  const { password: _p, apiKey: _a, caCert: _c, ...safe } = env;
-  void _p; void _a; void _c;
+  const { password: _p, apiKey: _a, caCert: _c, proxyPassword: _pp, ...safe } = env;
+  void _p; void _a; void _c; void _pp;
   return safe;
 }
 
@@ -39,7 +43,10 @@ function fromRow(row: EnvRow): EnvironmentSecret {
     messageField: row.message_field, authType: row.auth_type,
     username: row.username || undefined, password: decrypt(row.password_encrypted),
     apiKey: decrypt(row.api_key_encrypted), caCert: decrypt(row.ca_cert_encrypted),
+    proxyUrl: row.proxy_url || undefined, proxyUsername: row.proxy_username || undefined,
+    proxyPassword: decrypt(row.proxy_password_encrypted),
     tlsVerify: Boolean(row.tls_verify), hasSecret: Boolean(row.password_encrypted || row.api_key_encrypted),
+    hasProxySecret: Boolean(row.proxy_password_encrypted),
     source: "database",
   };
 }
@@ -66,14 +73,15 @@ export async function getEnvironment(id: string): Promise<EnvironmentSecret> {
   return fromRow(rows[0]);
 }
 
-export async function saveEnvironment(input: Omit<EnvironmentSecret, "id" | "hasSecret" | "source">): Promise<string> {
+export async function saveEnvironment(input: Omit<EnvironmentSecret, "id" | "hasSecret" | "hasProxySecret" | "source">): Promise<string> {
   const db = await database();
   const id = randomUUID();
   await db.execute(
-    `INSERT INTO environments (id,name,color,base_url,index_pattern,timestamp_field,message_field,auth_type,username,password_encrypted,api_key_encrypted,ca_cert_encrypted,tls_verify)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO environments (id,name,color,base_url,index_pattern,timestamp_field,message_field,auth_type,username,password_encrypted,api_key_encrypted,ca_cert_encrypted,proxy_url,proxy_username,proxy_password_encrypted,tls_verify)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [id, input.name, input.color, input.baseUrl, input.indexPattern, input.timestampField, input.messageField,
-      input.authType, input.username || null, encrypt(input.password), encrypt(input.apiKey), encrypt(input.caCert), input.tlsVerify],
+      input.authType, input.username || null, encrypt(input.password), encrypt(input.apiKey), encrypt(input.caCert),
+      input.proxyUrl || null, input.proxyUsername || null, encrypt(input.proxyPassword), input.tlsVerify],
   );
   return id;
 }

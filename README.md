@@ -16,7 +16,7 @@ PulseLog 是面向 Elasticsearch 8 服务日志场景的轻量级 Discover 工�
 - 字段侧栏可展开查看当前已加载 500/1000 条日志中的值分布和占比，高基数字段自动降级为样例展示；点击值可直接追加筛选
 - 字段存在性查询支持 `field:EXISTS`、Kibana 风格 `field:*` 和 Lucene 风格 `_exists_:field`
 - PIT + `search_after` 深度分页，不受 `index.max_result_window=10000` 限制
-- 多环境配置与顶部快捷切换；支持 Basic Auth、API Key、CA 证书
+- 多环境配置与顶部快捷切换；支持 Basic Auth、API Key、CA 证书和带认证的 HTTP(S) 代理
 - ES 密钥仅保存在服务端，MySQL 中使用 AES-256-GCM 加密
 - 环境变量零数据库启动，以及 MySQL 多环境持久化两种模式
 - 登录保护、HttpOnly 会话 Cookie、安全响应头、输入校验和安全错误输出
@@ -96,6 +96,17 @@ curl http://localhost:3000/api/health
 4. 在入口网关启用 HTTPS，并根据组织要求叠加 SSO/WAF。内置密码登录适合小团队独立部署。
 5. 对 PulseLog 使用的 MySQL 账号最小授权，对 ES 账号只授权目标日志索引。
 6. 多副本部署可以直接共享 MySQL；会话是无状态签名 Cookie，不要求 sticky session。
+
+通过环境变量启动时，可使用 `ES_PROXY_URL` 配置 HTTP(S) 代理，并按需设置 `ES_PROXY_USERNAME` 和 `ES_PROXY_PASSWORD`。代理密码与页面中录入的 ES 密钥一样不会返回浏览器，MySQL 模式下使用 AES-256-GCM 加密保存。
+
+已有 MySQL 表会在应用首次启动时自动增加代理字段。如果生产环境中的应用账号没有 DDL 权限，请先由 DBA 执行：
+
+```sql
+ALTER TABLE environments
+  ADD COLUMN proxy_url VARCHAR(2048) NULL AFTER ca_cert_encrypted,
+  ADD COLUMN proxy_username VARCHAR(255) NULL AFTER proxy_url,
+  ADD COLUMN proxy_password_encrypted TEXT NULL AFTER proxy_username;
+```
 
 ## 架构
 
