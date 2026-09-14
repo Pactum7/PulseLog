@@ -1,5 +1,5 @@
 import "server-only";
-import { Client, errors, type estypes } from "@elastic/elasticsearch";
+import { Client, errors, HttpConnection, type estypes } from "@elastic/elasticsearch";
 import { getEnvironment } from "./environments";
 import { parseAndCompile } from "./query-language";
 import type { EnvironmentSecret, FieldInfo, LogHit } from "./types";
@@ -28,6 +28,7 @@ export function clientFor(env: EnvironmentSecret): Client {
       node: env.baseUrl,
       auth: auth(env),
       proxy: proxyUrl(env),
+      Connection: env.proxyUrl ? HttpConnection : undefined,
       tls: { rejectUnauthorized: env.tlsVerify, ca: env.caCert },
       requestTimeout: 30_000,
       maxRetries: 2,
