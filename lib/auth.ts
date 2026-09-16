@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
+import { isMockMode } from "./mock-mode";
 
 export const SESSION_COOKIE = "pulselog_session";
 
@@ -19,6 +20,7 @@ export async function createSession(): Promise<string> {
 }
 
 export async function isAuthenticated(): Promise<boolean> {
+  if (isMockMode()) return true;
   const value = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!value) return false;
   try {
@@ -30,5 +32,6 @@ export async function isAuthenticated(): Promise<boolean> {
 }
 
 export async function requireAuth(): Promise<void> {
+  if (isMockMode()) return;
   if (!(await isAuthenticated())) throw new Error("UNAUTHORIZED");
 }

@@ -10,10 +10,12 @@ PulseLog 是面向 Elasticsearch 8 服务日志场景的轻量级 Discover 工�
 - 日志 message 支持行内单条展开、全部展开和全部收起，完整 `_source` 仍可从展开区查看
 - 最近 15/30 分钟、1/4/12/24 小时、3/7/30 天快捷时间范围
 - 简化查询语言：等值、文本分词、短语、`AND`、`OR`、括号和隐式 `AND`
+- 查询框按当前光标位置提示字段、字段类型、可用条件和 `AND/OR`，支持方向键、Tab、Enter 与 Esc 操作
 - 感知 ES 映射：`text` 使用 `match` / `match_phrase`，`keyword` 使用 `term`，`wildcard` 使用 `wildcard`
 - `message.pattern:*foo*` 会生成大小写不敏感的 contains wildcard 查询
 - 通过 `_field_caps` 自动加载可搜索字段和字段类型
-- 字段侧栏可展开查看当前已加载 500/1000 条日志中的值分布和占比，高基数字段自动降级为样例展示；点击值可直接追加筛选
+- 字段侧栏支持一键复制字段名；展开后可查看当前已加载 500/1000 条日志中的值分布和占比，高基数字段自动降级为样例展示，并可通过值右侧的加号追加筛选
+- 日志详情中的 object、nested 和数组值以可折叠、类型着色的 JSON 树展示
 - 字段存在性查询支持 `field:EXISTS`、Kibana 风格 `field:*` 和 Lucene 风格 `_exists_:field`
 - PIT + `search_after` 深度分页，不受 `index.max_result_window=10000` 限制
 - 多环境配置与顶部快捷切换；支持 Basic Auth、API Key、CA 证书和带认证的 HTTP(S) 代理
@@ -58,6 +60,21 @@ PulseLog 不会创建或修改索引、模板、数据流、ILM 策略或集群�
 ## 快速启动
 
 要求 Node.js 24+，MySQL 是可选项。
+
+### 无 Elasticsearch 的界面调试
+
+无需创建 `.env`，执行下面的命令即可启动完整的 Mock 演示环境：
+
+```bash
+npm ci
+npm run dev:mock
+```
+
+打开 `http://localhost:3000` 后会自动进入首页，无需登录。Mock 模式提供 1500 条动态日志样本以及 keyword、text、wildcard、boolean、number、object 和数组字段，支持实际体验字段/条件提示、`AND/OR`、`EXISTS`、通配符、时间过滤、趋势图、分页、枚举值筛选和 JSON 树。
+
+Mock 模式仅在 `next dev` 的开发环境中生效，页面右上角会显示 `MOCK DATA`，不会在生产构建或 `next start` 中绕过登录、访问真实 ES 或写入环境配置。
+
+### 连接 Elasticsearch
 
 ```bash
 cp .env.example .env
